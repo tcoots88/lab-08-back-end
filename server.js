@@ -5,6 +5,7 @@ const PORT = process.env.PORT || 3000;
 const express = require('express');
 const cors = require('cors');
 const app = express();
+const pg =require ('pg');
 const superagent = require('superagent');
 
 
@@ -13,10 +14,60 @@ require('dotenv').config();
 
 // cors is middleware, we USE middleware
 app.use(cors());
+// app.use(pg());
 
 app.get('/location', getLocation);
 app.get('/weather', getWeather);
 app.get('/events', getEvents);
+
+
+//database function 
+
+const client = new pg.Client(process.env.DATABASE_URL);
+client.connect();
+client.on('error', (error) => console.error(error));
+
+
+// function to query the database
+function dataBaseQuery(DATABASE, location) {
+  const query = client.query(DATABASE, [location]);
+  if(query.rowCount) {
+    return query.rows;
+  }
+}
+
+// check the database
+function locationDatabaseCheck(request,response){
+const DATABASE = 'SELECT * FROM locations WHERE search_query =$1';
+let verifyResult = dataBaseQuery(DATABASE,request)
+if(verifyResult){
+  response.send(verifyResult[0]);
+}
+
+};
+
+
+//store data for locations
+
+function saveNewLocations(location){
+  let newDataBaseObject = `INSERT INTO location(
+    search_query,
+    formatted_query,
+    latitude,
+    longitude
+   ) VALUES(
+    $1,
+    $2,
+    $3,
+    $4
+
+)RETURNING  locationId`;
+let locationStats =[location.search_query,location.formatted_query,location.latitude,location.longitude];
+client.query(newDataBaseObject,locationStats);
+
+
+
+}
 
 //  Request the query input and send the data
 function getLocation(request, response) {
@@ -56,29 +107,10 @@ function Daily(dailyForecast) {
 }
 
 
-// functions to pull data from JSON
-// function geoCoord(query) {
-//   const geoData = require('./data/geo.json');
-//   const location = new Location(geoData.results[0]);
-//   return location;
-// }
-
-// function searchWeather(query) {
-//   {
-//     let darkSkyData = require('./data/darksky.json');
-//     console.log(darkSkyData);
-//     let weatherArray = darkSkyData.daily.data.map(forecast => (new Daily(forecast)));
-//     console.log(weatherArray);
-//     return weatherArray;
-//   }
-// }
 
 function getEvents(request, response) {
-  // console.log(request.query);
-  // console.log(response);
-  // go to eventful, get data and get it to look like this
+  
   superagent.get(`http://api.eventful.com/json/events/search?where=${request.query.data.latitude},${request.query.data.longitude}&within=25&app_key=${process.env.EVENTBRITE_API_KEY}`).then(data => {
-    // console.log(JSON.parse(data.text).events.event[0]);
     const allEvents = JSON.parse(data.text).events.event;
 
     const allData = allEvents.map(event => {
@@ -110,3 +142,4 @@ app.listen(PORT, () => {
 
 
 })
+
